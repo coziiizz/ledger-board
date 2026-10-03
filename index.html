@@ -1,0 +1,1010 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<body>
+<title>判断账本</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600;700&display=swap">
+<style>
+/* 布局：账页式。顶部状态条 → 当前判断矩阵（主角）→ 即将到期 → 成绩 → 纪律 → 明细与背景 → 口径说明。
+   冷灰绿纸面、墨蓝强调；涨跌按 A 股习惯红涨绿跌，且始终配文字。 */
+:root {
+  --bg: #eef2f0;
+  --surface: #fbfcfb;
+  --ink: #13201b;
+  --ink-2: #4a5852;
+  --muted: #74817c;
+  --rule: #d9e1dd;
+  --rule-strong: #b9c5c0;
+  --accent: #1d4f91;
+  --accent-wash: rgba(29, 79, 145, 0.08);
+  --up: #d0413a;
+  --flat: #a9b3af;
+  --down: #0e8a7a;
+  --up-wash: rgba(208, 65, 58, 0.11);
+  --down-wash: rgba(14, 138, 122, 0.11);
+  --flat-wash: rgba(120, 135, 130, 0.12);
+  --warn: #9a5b00;
+  --warn-wash: rgba(214, 140, 20, 0.14);
+  --f-display: "Noto Serif SC", "Songti SC", "STSong", serif;
+  --f-body: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-num: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1211; --surface: #151c1a; --ink: #e6ece9; --ink-2: #a9b5b0; --muted: #7c8984;
+    --rule: #25302c; --rule-strong: #364540; --accent: #79a6e6; --accent-wash: rgba(121, 166, 230, 0.12);
+    --up: #e05a52; --flat: #56625d; --down: #1a9e8f;
+    --up-wash: rgba(224, 90, 82, 0.16); --down-wash: rgba(26, 158, 143, 0.16); --flat-wash: rgba(140, 155, 150, 0.12);
+    --warn: #e8a948; --warn-wash: rgba(232, 169, 72, 0.14);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1211; --surface: #151c1a; --ink: #e6ece9; --ink-2: #a9b5b0; --muted: #7c8984;
+  --rule: #25302c; --rule-strong: #364540; --accent: #79a6e6; --accent-wash: rgba(121, 166, 230, 0.12);
+  --up: #e05a52; --flat: #56625d; --down: #1a9e8f;
+  --up-wash: rgba(224, 90, 82, 0.16); --down-wash: rgba(26, 158, 143, 0.16); --flat-wash: rgba(140, 155, 150, 0.12);
+  --warn: #e8a948; --warn-wash: rgba(232, 169, 72, 0.14);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 14px/1.6 var(--f-body);
+  padding-inline: 16px; padding-block: 0 48px;
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 40px; }
+h1, h2, h3 { font-family: var(--f-display); font-weight: 700; text-wrap: balance; margin: 0; letter-spacing: 0.01em; }
+h1 { font-size: 30px; line-height: 1.2; }
+h2 { font-size: 20px; line-height: 1.3; }
+h3 { font-size: 15px; font-family: var(--f-body); font-weight: 700; }
+p { margin: 0; }
+.num { font-family: var(--f-num); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.ink2 { color: var(--ink-2); }
+.small { font-size: 12.5px; }
+.lede { color: var(--ink-2); max-width: 68ch; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* 顶部 */
+header.top { padding-top: 24px; display: grid; gap: 10px; }
+.titlerow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; }
+.titlerow .sub { color: var(--ink-2); }
+.facts { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12.5px; color: var(--muted); }
+.facts b { color: var(--ink-2); font-weight: 500; }
+.demo-banner {
+  display: flex; gap: 10px; align-items: flex-start;
+  background: var(--warn-wash); color: var(--ink); border-radius: 6px; padding: 10px 14px;
+}
+.demo-banner strong { color: var(--warn); white-space: nowrap; }
+
+section { display: grid; gap: 16px; min-width: 0; }
+.sec-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 16px; border-bottom: 1px solid var(--rule-strong); padding-bottom: 8px; }
+.sheet { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; min-width: 0; }
+
+/* 图例 */
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--ink-2); align-items: center; }
+.key { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 12px; height: 8px; border-radius: 2px; display: inline-block; }
+.sw.down { background: var(--down); } .sw.flat { background: var(--flat); } .sw.up { background: var(--up); }
+.sw.base { height: 3px; background: var(--muted); opacity: .6; }
+
+/* 概率条：跌 | 中间 | 涨，从左到右像数轴 */
+.pbar { display: flex; gap: 2px; height: 10px; border-radius: 3px; overflow: hidden; }
+.pbar i { display: block; min-width: 0; }
+.pbar .s-down { background: var(--down); }
+.pbar .s-flat { background: var(--flat); }
+.pbar .s-up { background: var(--up); }
+.pbar.base { height: 3px; opacity: .45; border-radius: 2px; }
+.pbar.lg { height: 16px; }
+.pbar.sm { height: 8px; width: 96px; }
+
+/* 当前判断矩阵 */
+.matrix-scroll { overflow-x: auto; }
+table.matrix { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 860px; }
+.matrix th, .matrix td { padding: 0; text-align: left; vertical-align: top; }
+.matrix thead th { font-weight: 500; font-size: 12.5px; color: var(--ink-2); padding: 10px 12px 8px; border-bottom: 1px solid var(--rule); }
+.matrix thead th .muted { font-weight: 400; }
+.matrix tbody th { padding: 12px 12px; border-bottom: 1px solid var(--rule); position: sticky; left: 0; background: var(--surface); z-index: 1; min-width: 116px; }
+.matrix tbody tr:last-child th, .matrix tbody tr:last-child td { border-bottom: 0; }
+.matrix tbody td { border-bottom: 1px solid var(--rule); border-left: 1px solid var(--rule); }
+.mk-name { font-weight: 700; }
+.mk-code { font-family: var(--f-num); font-size: 12px; color: var(--muted); margin-left: 4px; }
+.mk-bench { display: block; font-size: 12px; color: var(--muted); }
+.cell {
+  display: grid; gap: 5px; width: 100%; text-align: left; background: none; border: 0; cursor: pointer;
+  padding: 10px 12px 11px; border-radius: 0;
+}
+.cell:hover { background: var(--accent-wash); }
+.cell[aria-pressed="true"] { background: var(--accent-wash); box-shadow: inset 0 0 0 2px var(--accent); }
+.cell-probs { display: flex; justify-content: space-between; font-family: var(--f-num); font-size: 12.5px; color: var(--ink-2); }
+.cell-probs b { color: var(--ink); font-weight: 500; }
+.cell-meta { font-size: 11.5px; color: var(--muted); display: flex; justify-content: space-between; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; line-height: 1.5; padding: 0 6px; border-radius: 4px; white-space: nowrap; }
+.chip.up { background: var(--up-wash); } .chip.down { background: var(--down-wash); } .chip.flat { background: var(--flat-wash); }
+.chip.wait { background: transparent; color: var(--muted); box-shadow: inset 0 0 0 1px var(--rule-strong); }
+.chip.ok { background: var(--accent-wash); color: var(--accent); }
+.chip.warn { background: var(--warn-wash); color: var(--warn); }
+.dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.dot.up { background: var(--up); } .dot.down { background: var(--down); } .dot.flat { background: var(--flat); }
+
+/* 选中卡片明细 */
+.detail { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 0; }
+.detail > div { padding: 18px 20px; min-width: 0; display: grid; gap: 12px; align-content: start; }
+.detail > div + div { border-left: 1px solid var(--rule); }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; font-size: 13px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; min-width: 0; }
+.cmp { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cmp th, .cmp td { padding: 5px 0; border-bottom: 1px solid var(--rule); text-align: right; }
+.cmp th:first-child, .cmp td:first-child { text-align: left; }
+.cmp a { color: var(--accent); text-decoration: none; }
+.cmp a:hover { text-decoration: underline; }
+.cmp thead th { color: var(--muted); font-weight: 400; font-size: 12px; }
+.drivers { display: flex; flex-wrap: wrap; gap: 6px; }
+.drivers span { background: var(--bg); border-radius: 4px; padding: 2px 8px; font-size: 12.5px; }
+.drivers b { font-weight: 500; color: var(--ink-2); margin-right: 4px; }
+.textblock { display: grid; gap: 2px; }
+.textblock .lbl { font-size: 12px; color: var(--muted); }
+.empty { color: var(--muted); font-style: normal; }
+
+/* 表格 */
+.tscroll { overflow-x: auto; }
+table.list { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 720px; }
+.list th, .list td { padding: 8px 12px; border-bottom: 1px solid var(--rule); text-align: left; white-space: nowrap; vertical-align: middle; }
+.list thead th { font-weight: 500; font-size: 12px; color: var(--muted); }
+.list td.r, .list th.r { text-align: right; }
+.list tbody tr:last-child td { border-bottom: 0; }
+#mh th, #mh td { padding: 7px 5px; font-size: 12.5px; }
+.more { border: 0; background: none; color: var(--accent); cursor: pointer; padding: 10px 12px; font-size: 13px; }
+.more:hover { text-decoration: underline; }
+.list tbody tr:hover td { background: var(--accent-wash); }
+.better { color: var(--ink); } .worse { color: var(--muted); }
+
+/* 成绩 */
+.grid-2 { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.panel { padding: 16px 18px 18px; display: grid; gap: 12px; align-content: start; min-width: 0; }
+.panel-head { display: grid; gap: 2px; }
+.forest { display: grid; }
+.frow { display: grid; grid-template-columns: 64px 64px minmax(0, 1fr) 150px; align-items: center; column-gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--rule); }
+.frow > div { min-width: 0; }
+.frow.head { padding: 0 0 6px; font-size: 12px; color: var(--muted); }
+.frow.axis { border-bottom: 0; padding: 4px 0 0; }
+.forest .val { text-align: right; font-family: var(--f-num); font-size: 12.5px; }
+.forest .val .ci { display: block; color: var(--muted); font-size: 11.5px; }
+.fbar { position: relative; height: 22px; }
+.fbar i { position: absolute; display: block; }
+.fbar .z { top: 0; bottom: 0; width: 1px; background: var(--rule-strong); }
+.fbar .c { top: 10px; height: 2px; background: var(--accent); border-radius: 1px; }
+.fbar .d { top: 5px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--surface); }
+.fbar .d.hollow { background: var(--surface); box-shadow: inset 0 0 0 2px var(--accent); }
+.forest .lbl b { display: block; font-weight: 500; }
+.forest .lbl span { font-size: 11.5px; color: var(--muted); }
+.multiples { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
+.mini { display: grid; gap: 4px; min-width: 0; }
+.mini .t { font-size: 12.5px; display: flex; justify-content: space-between; gap: 6px; }
+.mini svg { width: 100%; height: auto; display: block; overflow: visible; }
+.seg { display: inline-flex; gap: 2px; background: var(--bg); padding: 2px; border-radius: 6px; flex-wrap: wrap; }
+.seg button { border: 0; background: none; padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 12.5px; color: var(--ink-2); }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--rule); }
+.calwrap svg { width: 100%; max-width: 420px; height: auto; display: block; overflow: visible; }
+.rows { display: grid; gap: 0; }
+.rows > div { padding: 10px 0; border-bottom: 1px solid var(--rule); display: grid; gap: 6px; }
+.rows > div:last-child { border-bottom: 0; }
+.rowtop { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.order { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-family: var(--f-num); font-size: 12px; }
+.order span { background: var(--bg); border-radius: 4px; padding: 0 6px; }
+.order i { color: var(--muted); font-style: normal; }
+.meter { height: 6px; border-radius: 3px; background: var(--accent-wash); overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+
+/* 背景判断 */
+.bg-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.bg-card { padding: 14px 16px; display: grid; gap: 8px; align-content: start; }
+.bg-card .ret { font-family: var(--f-num); font-size: 18px; }
+
+/* 口径说明 */
+.rules { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 32px; font-size: 13px; color: var(--ink-2); }
+.rules p { max-width: 62ch; }
+.rules b { color: var(--ink); font-weight: 500; }
+footer { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 18px; border-top: 1px solid var(--rule); padding-top: 12px; }
+
+.tip {
+  position: fixed; pointer-events: none; z-index: 20; background: var(--ink); color: var(--surface);
+  font-size: 12px; line-height: 1.5; padding: 6px 9px; border-radius: 5px; max-width: 260px; opacity: 0; transition: opacity .1s;
+}
+.tip.on { opacity: 1; }
+
+svg text { font-family: var(--f-num); font-size: 10.5px; fill: var(--muted); }
+svg .grid { stroke: var(--rule); stroke-width: 1; }
+svg .zero { stroke: var(--rule-strong); stroke-width: 1; }
+svg .line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+svg .area { fill: var(--accent); opacity: .1; }
+svg .pt { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+svg .pt.hollow { fill: var(--surface); stroke: var(--accent); stroke-width: 2; }
+svg .ci { stroke: var(--accent); stroke-width: 2; stroke-linecap: round; }
+svg .diag { stroke: var(--rule-strong); stroke-width: 1; stroke-dasharray: 0; }
+svg .hit { fill: transparent; }
+svg .cross { stroke: var(--ink-2); stroke-width: 1; }
+
+@media (max-width: 900px) {
+  .grid-2, .grid-3, .detail, .rules { grid-template-columns: minmax(0, 1fr); }
+  .detail > div + div { border-left: 0; border-top: 1px solid var(--rule); }
+  .multiples { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .bg-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  h1 { font-size: 24px; }
+  .bg-grid { grid-template-columns: minmax(0, 1fr); }
+  .frow { grid-template-columns: 56px minmax(0, 1fr) 96px; }
+  .frow .nb { display: none; }
+}
+
+/* 分页 */
+.tabs { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; display: flex; gap: 4px; overflow-x: auto;
+  background: var(--bg); border-bottom: 1px solid var(--rule-strong); padding-top: 4px; margin-top: -24px; }
+.tabs button { border: 0; background: none; padding: 10px 14px; font-size: 14px; color: var(--ink-2); cursor: pointer;
+  border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+.tabs button[aria-selected="true"] { color: var(--ink); font-weight: 700; border-bottom-color: var(--accent); }
+.tabs button:hover { color: var(--ink); }
+.tabpanel { display: grid; gap: 24px; min-width: 0; }
+.status { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.stat { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 10px 14px; display: grid; gap: 4px; min-width: 0; }
+.stat .k { font-size: 12px; color: var(--muted); }
+.stat .v { font-size: 14px; display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; }
+.orders { padding: 6px 16px; display: grid; }
+.orders > div { display: grid; grid-template-columns: 64px 1fr auto; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--rule); }
+.orders > div:last-child { border-bottom: 0; }
+.segs { display: flex; flex-wrap: wrap; gap: 8px; }
+.col { display: grid; gap: 16px; align-content: start; min-width: 0; }
+details.fold > summary { cursor: pointer; font-family: var(--f-display); font-weight: 700; font-size: 17px; padding: 8px 0;
+  border-bottom: 1px solid var(--rule-strong); list-style-position: inside; }
+details.fold[open] > summary { margin-bottom: 12px; }
+@media (max-width: 900px) { .status { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.threads { padding: 4px 16px; display: grid; }
+.thread { padding: 12px 0; border-bottom: 1px solid var(--rule); display: grid; gap: 8px; }
+.thread:last-child { border-bottom: 0; }
+.tgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.thread a, .textblock a { color: var(--accent); }
+details.mini-fold > summary { cursor: pointer; font-size: 12.5px; color: var(--accent); padding: 4px 0; }
+details.mini-fold[open] { display: grid; gap: 10px; }
+@media (max-width: 900px) { .tgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+@media (prefers-reduced-motion: reduce) { .tip { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="titlerow">
+      <h1>判断账本</h1>
+      <span class="sub" id="subtitle"></span>
+    </div>
+    <div class="demo-banner" id="demo" hidden>
+      <strong>演示版</strong>
+      <span>行情和预测全部是模拟生成的，数字没有任何含义。</span>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="看板分页">
+    <button type="button" role="tab" id="tab-current" data-tab="current" aria-controls="p-current">当前判断</button>
+    <button type="button" role="tab" id="tab-score" data-tab="score" aria-controls="p-score">成绩</button>
+    <button type="button" role="tab" id="tab-events" data-tab="events" aria-controls="p-events">事件</button>
+    <button type="button" role="tab" id="tab-data" data-tab="data" aria-controls="p-data">数据与纪律</button>
+  </nav>
+
+  <!-- 当前判断 -->
+  <div class="tabpanel" id="p-current" role="tabpanel" aria-labelledby="tab-current">
+    <div class="status" id="status"></div>
+    <section aria-labelledby="h-current">
+      <div class="sec-head">
+        <h2 id="h-current">六个市场 × 五个期限</h2>
+        <div class="legend">
+          <span class="key"><span class="sw down"></span>跌</span>
+          <span class="key" title="到期收益落在中间区间；只看到期点，不代表期间走势平稳"><span class="sw flat"></span>中间*</span>
+          <span class="key"><span class="sw up"></span>涨</span>
+          <span class="key"><span class="sw base"></span>历史基础频率</span>
+        </div>
+      </div>
+      <div class="sheet matrix-scroll"><table class="matrix" id="matrix"></table></div>
+      <p class="small muted">数字是最近一次提交的概率（%），粗体为最大的一档。* 中间档 = 到期时收益落在中间区间，只看到期点，不代表期间走势平稳（先跌 25% 再回本也算）。点任意一格，下方显示整张卡片。</p>
+      <div class="sheet detail" id="detail"></div>
+    </section>
+    <section aria-labelledby="h-threads">
+      <div class="sec-head"><h2 id="h-threads">研究主线</h2><span class="small muted">现在最重要的分歧、证据和下一验证点</span></div>
+      <div class="sheet threads" id="threads"></div>
+    </section>
+    <section aria-labelledby="h-orders">
+      <div class="sec-head"><h2 id="h-orders">最新跨市场排序</h2><span class="small muted">按美元回报从强到弱</span></div>
+      <div class="sheet orders" id="orders"></div>
+    </section>
+    <details class="fold">
+      <summary>45 天内到期 <span class="muted small" id="upcoming-count"></span></summary>
+      <div class="sheet"><div class="tscroll"><table class="list" id="upcoming"></table></div><button type="button" class="more" id="upcoming-more" hidden></button></div>
+    </details>
+  </div>
+
+  <!-- 成绩 -->
+  <div class="tabpanel" id="p-score" role="tabpanel" aria-labelledby="tab-score" hidden>
+    <p class="lede small">技能分 = 1 − 你的 RPS ÷ 参照的 RPS，大于 0 说明比参照更准。参照有两个：历史基础频率（不做任何判断），简单基线（只用价格：近期波动 + 长期漂移）。你的判断要证明的是比简单基线多出的那部分。</p>
+    <div class="sheet panel">
+      <div class="panel-head">
+        <h3>三方对比</h3>
+        <p class="small muted">平均 RPS 越低越好。“相对简单基线”的区间按期限分块重抽样得到，只是粗略参考：相邻预测共享行情，独立样本远少于条数。</p>
+      </div>
+      <div class="tscroll"><table class="list" id="threeway" style="min-width:0"></table></div>
+    </div>
+    <div class="grid-2">
+      <div class="sheet panel">
+        <div class="panel-head">
+          <h3>分期限技能分</h3>
+          <p class="small muted">横线是 90% 区间（按期限长度分块重抽样）。长期限的预测互相重叠，区间会很宽；不重叠窗口少于 3 个时不给区间。</p>
+        </div>
+        <div class="forest" id="forest"></div>
+      </div>
+      <div class="sheet panel">
+        <div class="panel-head">
+          <h3>校准</h3>
+          <p class="small muted">横轴是你给的概率，纵轴是实际发生的比例，越靠近对角线越好。“中间”最容易出现虚假技能，建议单独看。</p>
+        </div>
+        <div class="segs">
+          <div class="seg" id="cal-seg" role="group" aria-label="选择期限"></div>
+          <div class="seg" id="cal-cat" role="group" aria-label="选择档位"></div>
+        </div>
+        <div class="calwrap" id="cal"></div>
+      </div>
+    </div>
+    <div class="sheet panel">
+      <div class="panel-head">
+        <h3>累计技能分</h3>
+        <p class="small muted">横轴是到期日，前 10 条不画。短期限较快稳定，长期限要很多年。</p>
+      </div>
+      <div class="multiples" id="multiples"></div>
+    </div>
+    <div class="grid-2">
+      <div class="sheet panel">
+        <div class="panel-head">
+          <h3>跨市场排序成绩</h3>
+          <p class="small muted">预测排名与实际美元回报排名的 Spearman 相关，随机为 0，满分 1。</p>
+        </div>
+        <div class="rows" id="rankings"></div>
+      </div>
+      <div class="sheet panel">
+        <div class="panel-head">
+          <h3>更新卡：改判有没有帮助</h3>
+          <p class="small muted">同一个到期日，更新后的概率与原卡比较。RPS 差为负说明更新更准。更新卡不计入上面的常规成绩。</p>
+        </div>
+        <div class="tscroll"><table class="list" id="updates" style="min-width:0"></table></div>
+      </div>
+      <div class="sheet panel">
+        <div class="panel-head">
+          <h3>最近到期</h3>
+          <p class="small muted">RPS 越低越好；灰色为照抄基础频率的成绩。</p>
+        </div>
+        <div class="tscroll"><table class="list" id="recent" style="min-width:0"></table></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 事件 -->
+  <div class="tabpanel" id="p-events" role="tabpanel" aria-labelledby="tab-events" hidden>
+    <p class="lede small">★ 为重大事件；“推算”表示日期按规则推出，未见官方公告。事件前用 scripts/event.py pre 记下市场定价和你的判断，事件后用 post 记结果。</p>
+    <div class="grid-2">
+      <div class="sheet panel">
+        <div class="panel-head"><h3>近两周与未来 45 天</h3></div>
+        <div class="tscroll"><table class="list" id="events" style="min-width:0"></table></div>
+      </div>
+      <div class="col">
+        <div class="sheet panel">
+          <div class="panel-head">
+            <h3>事件多的卡准不准</h3>
+            <p class="small muted">14 天按有无重大事件分组，更长期限按事件数是否多于中位数分组。</p>
+          </div>
+          <div class="tscroll"><table class="list" id="evsplit" style="min-width:0"></table></div>
+        </div>
+        <div class="sheet panel">
+          <div class="panel-head"><h3>最近的事件记录</h3></div>
+          <div class="rows" id="evnotes"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 数据与纪律 -->
+  <div class="tabpanel" id="p-data" role="tabpanel" aria-labelledby="tab-data" hidden>
+    <div class="grid-2">
+      <div class="sheet panel">
+        <div class="panel-head">
+          <h3>按日程填满</h3>
+          <p class="small muted">每个周期都要给全部市场出预测，只在有把握时才记，命中率会虚高。</p>
+        </div>
+        <div class="rows" id="coverage"></div>
+      </div>
+      <div class="sheet panel">
+        <div class="panel-head">
+          <h3>数据新鲜度</h3>
+          <p class="small muted">行情最后日期，以及最近一次指标存档的日期和未填项数。</p>
+        </div>
+        <div class="tscroll"><table class="list" id="fresh" style="min-width:0"></table></div>
+      </div>
+    </div>
+    <details class="fold">
+      <summary>数据更正记录</summary>
+      <div class="sheet panel">
+        <p class="small muted">抓错的价格不覆盖原记录，而是追加一条更正（scripts/correct.py），打分用更正后的值。</p>
+        <div class="tscroll"><table class="list" id="corrections" style="min-width:0"></table></div>
+      </div>
+    </details>
+    <details class="fold">
+      <summary>分市场技能分</summary>
+      <div class="sheet panel">
+        <p class="small muted">已到期条数少时（灰色）基本是噪声。</p>
+        <div class="tscroll"><table class="list" id="mh" style="min-width:0"></table></div>
+      </div>
+    </details>
+    <details class="fold">
+      <summary>美元回报拆分</summary>
+      <div class="sheet panel">
+        <p class="small muted">用已到期的 14 天预测，把美元对数回报拆成本币部分和汇率部分（本币对美元升值为正）。相关为负说明汇率在减震，为正说明在放大。</p>
+        <div class="tscroll"><table class="list" id="decomp"></table></div>
+      </div>
+    </details>
+    <details class="fold">
+      <summary>3 年以上背景判断</summary>
+      <div class="bg-grid" id="bg"></div>
+    </details>
+    <details class="fold">
+      <summary>口径</summary>
+      <div class="sheet panel rules">
+        <p><b>预测日与起点。</b>预测日按北京时间计，必须当天推送。起点是预测日之后第一个收盘价，提交时任何市场都还没开始走这段行情。</p>
+        <p><b>终点。</b>到期日当天或之前最后一个收盘价。起点和终点观测到后追加进 fills 记录，打分只读这份记录。</p>
+        <p><b>三档。</b>中间区间 = ±0.5 × 年化波动 × √期限，年化波动用预测日前约 3 年的美元日收益，提交时冻结。中间档只描述到期时的收益，不描述期间路径。</p>
+        <p><b>打分。</b>三档有顺序，用 RPS：把“涨”判成“跌”比判成“中间”罚得更重。基准是预测日前 10 年同期限的历史频率。</p>
+        <p><b>只追加。</b>账本只能在末尾新增；每次推送检查旧内容是否原样保留、新记录是否不早于推送日。</p>
+        <p><b>计价。</b>美元计价的价格指数回报，不含分红；美元回报 ≈ 本币指数回报 + 汇率变化。A 股、日股分别用沪深300ETF 和 TOPIX ETF 的原始收盘价代替指数。</p>
+      </div>
+    </details>
+  </div>
+</div>
+<div class="tip" id="tip" role="tooltip"></div>
+
+<script>
+const D = {"generated_at": "2026-10-03T22:07:53+08:00", "today": "2026-10-03", "commit": "e648d21dc603f7811f5912b781d0275190c24ddc", "demo": false, "markets": [{"code": "US", "name": "美股", "benchmark": "标普 500", "last_price_date": "2026-10-02"}, {"code": "CN", "name": "A 股", "benchmark": "沪深 300", "last_price_date": "2026-09-30"}, {"code": "HK", "name": "港股", "benchmark": "恒生指数", "last_price_date": "2026-10-02"}, {"code": "TW", "name": "台股", "benchmark": "台湾加权指数", "last_price_date": "2026-10-02"}, {"code": "KR", "name": "韩股", "benchmark": "KOSPI", "last_price_date": "2026-10-02"}, {"code": "JP", "name": "日股", "benchmark": "TOPIX", "last_price_date": "2026-10-02"}], "horizons": [{"code": "14d", "label": "14 天", "days": 14, "every": "week"}, {"code": "1m", "label": "1 个月", "days": 30, "every": "2week"}, {"code": "3m", "label": "3 个月", "days": 91, "every": "month"}, {"code": "6m", "label": "6 个月", "days": 183, "every": "month"}, {"code": "12m", "label": "12 个月", "days": 365, "every": "quarter"}], "counts": {"forecasts": 0, "rankings": 0, "background": 0, "fills": 0}, "current": [], "upcoming": [], "updates": {"by_horizon": [], "n_open": 0}, "by_horizon": [{"horizon": "14d", "n": 0, "n_open": 0}, {"horizon": "1m", "n": 0, "n_open": 0}, {"horizon": "3m", "n": 0, "n_open": 0}, {"horizon": "6m", "n": 0, "n_open": 0}, {"horizon": "12m", "n": 0, "n_open": 0}], "by_market_horizon": [], "trajectory": {}, "calibration": {}, "calibration_cat": {}, "fx_decomp": [], "event_split": [], "events": [{"id": "cn_cpi_ppi_2026_09", "date": "2026-10-14", "time": "09:30", "name": "中国 9 月 CPI/PPI", "markets": ["CN", "HK"], "importance": "mid", "tentative": null, "n_pre": 0, "has_post": false}, {"id": "us_cpi_2026_09", "date": "2026-10-14", "time": "20:30", "name": "美国 9 月 CPI", "markets": ["US", "CN", "HK", "TW", "KR", "JP"], "importance": "high", "tentative": null, "n_pre": 0, "has_post": false}, {"id": "tsmc_3q26", "date": "2026-10-15", "time": "14:00", "name": "TSMC 3Q26 法说会", "markets": ["TW", "KR", "US"], "importance": "high", "tentative": null, "n_pre": 0, "has_post": false}, {"id": "cn_gdp_2026q3", "date": "2026-10-19", "time": "10:00", "name": "中国三季度 GDP 与 9 月活动数据", "markets": ["CN", "HK"], "importance": "high", "tentative": null, "n_pre": 0, "has_post": false}, {"id": "kr_exports20_2026_10", "date": "2026-10-21", "time": "08:00", "name": "韩国 10 月前 20 日出口", "markets": ["KR", "TW"], "importance": "mid", "tentative": true, "n_pre": 0, "has_post": false}, {"id": "bok_2026_10", "date": "2026-10-22", "time": "08:50", "name": "韩国央行利率决议", "markets": ["KR"], "importance": "high", "tentative": null, "n_pre": 0, "has_post": false}, {"id": "us_flash_pmi_2026_10", "date": "2026-10-23", "time": "21:45", "name": "美国 10 月 S&P Global 初值 PMI", "markets": ["US"], "importance": "mid", "tentative": null, "n_pre": 0, "has_post": false}, {"id": "cn_profit_2026_09", "date": "2026-10-27", "time": "09:30", "name": "中国 9 月工业企业利润", "markets": ["CN", "HK"], "importance": "mid", "tentative": null, "n_pre": 0, "has_post": false}, {"id": "fomc_2026_10", "date": "2026-10-29", "time": "02:00", "name": "FOMC 决议（无点阵图）", "markets": ["US", "CN", "HK", "TW", "KR", "JP"], "importance": "high", "tentative": null, "n_pre": 0, "has_post": false}, {"id": "us_gdp_2026q3a", "date": "2026-10-29", "time": "20:30", "name": "美国三季度 GDP 初值与 9 月 PCE", "markets": ["US"], "importance": "mid", "tentative": null, "n_pre": 0, "has_post": false}, {"id": "boj_2026_10", "date": "2026-10-30", "time": "", "name": "日本央行决议（含展望报告）", "markets": ["JP"], "importance": "high", "tentative": null, "n_pre": 0, "has_post": false}, {"id": "cn_pmi_2026_10", "date": "2026-10-30", "time": "09:30", "name": "中国 10 月官方 PMI", "markets": ["CN", "HK"], "importance": "mid", "tentative": null, "n_pre": 0, "has_post": false}, {"id": "kr_exports_2026_10", "date": "2026-11-02", "time": "08:00", "name": "韩国 10 月全月出口", "markets": ["KR", "TW"], "importance": "mid", "tentative": true, "n_pre": 0, "has_post": false}, {"id": "us_midterm_2026", "date": "2026-11-03", "time": "", "name": "美国中期选举", "markets": ["US", "CN", "HK", "TW", "KR", "JP"], "importance": "high", "tentative": true, "n_pre": 0, "has_post": false}, {"id": "us_nfp_2026_10", "date": "2026-11-06", "time": "21:30", "name": "美国 10 月非农", "markets": ["US"], "importance": "high", "tentative": null, "n_pre": 0, "has_post": false}, {"id": "cn_cpi_ppi_2026_10", "date": "2026-11-09", "time": "09:30", "name": "中国 10 月 CPI/PPI", "markets": ["CN", "HK"], "importance": "mid", "tentative": null, "n_pre": 0, "has_post": false}, {"id": "us_cpi_2026_10", "date": "2026-11-10", "time": "21:30", "name": "美国 10 月 CPI", "markets": ["US", "CN", "HK", "TW", "KR", "JP"], "importance": "high", "tentative": null, "n_pre": 0, "has_post": false}, {"id": "msci_review_2026_11", "date": "2026-11-11", "time": "", "name": "MSCI 半年度指数评审公布", "markets": ["US", "CN", "HK", "TW", "KR", "JP"], "importance": "mid", "tentative": true, "n_pre": 0, "has_post": false}, {"id": "cn_activity_2026_10", "date": "2026-11-16", "time": "10:00", "name": "中国 10 月活动数据", "markets": ["CN", "HK"], "importance": "mid", "tentative": null, "n_pre": 0, "has_post": false}], "event_notes": [], "threads": [], "snapshots": {}, "corrections": [], "rankings": [{"horizon": "1m", "n": 0, "n_open": 0}, {"horizon": "3m", "n": 0, "n_open": 0}, {"horizon": "6m", "n": 0, "n_open": 0}, {"horizon": "12m", "n": 0, "n_open": 0}], "coverage": [], "recent_resolved": [], "background": []};
+(function () {
+  const $ = (s) => document.querySelector(s);
+  const H = Object.fromEntries(D.horizons.map((h) => [h.code, h]));
+  const M = Object.fromEntries(D.markets.map((m) => [m.code, m]));
+  const CAT = { up: "涨", flat: "中间", down: "跌" };
+  const ZONE = { up: "涨档", flat: "中间档", down: "跌档" };
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const p0 = (x) => (x == null ? "—" : Math.round(x * 100));
+  const sgn = (x, d = 1) => (x == null ? "—" : (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x).toFixed(d));
+  const md = (s) => (s ? s.slice(5) : "");
+  const probs = (r) => ({ down: r.p_down, flat: r.p_flat, up: r.p_up });
+  const base = (r) => ({ down: r.base_down, flat: r.base_flat, up: r.base_up });
+
+  function pbar(p, cls = "") {
+    const seg = (k) => (p[k] > 0 ? `<i class="s-${k}" style="flex:${p[k]} 1 0"></i>` : "");
+    return `<div class="pbar ${cls}" role="img" aria-label="跌 ${p0(p.down)}%，中间 ${p0(p.flat)}%，涨 ${p0(p.up)}%">${seg("down")}${seg("flat")}${seg("up")}</div>`;
+  }
+  function statusChip(r) {
+    if (r.status === "waiting_start") return `<span class="chip wait">待起点</span>`;
+    if (r.status === "open" && r.running_ret_pct != null)
+      return `<span class="chip ${r.running_zone}"><span class="dot ${r.running_zone}"></span>至今 ${sgn(r.running_ret_pct)}%</span>`;
+    if (r.status === "resolved") return `<span class="chip ${r.outcome}">已到期 · ${CAT[r.outcome]}</span>`;
+    return "";
+  }
+
+  // 提示框
+  const tip = $("#tip");
+  function showTip(html, ev) {
+    tip.innerHTML = html;
+    tip.classList.add("on");
+    const w = tip.offsetWidth, h = tip.offsetHeight;
+    let x = ev.clientX + 14, y = ev.clientY + 14;
+    if (x + w > window.innerWidth - 8) x = ev.clientX - w - 14;
+    if (y + h > window.innerHeight - 8) y = ev.clientY - h - 14;
+    tip.style.left = x + "px";
+    tip.style.top = y + "px";
+  }
+  const hideTip = () => tip.classList.remove("on");
+
+  // 顶部
+  const lastDates = [...new Set(D.markets.map((m) => m.last_price_date).filter(Boolean))].sort();
+  $("#subtitle").textContent = `${D.markets.length} 个市场 · 美元计价 · ${D.horizons.map((h) => h.label).join(" / ")}`;
+  const lastDate = lastDates.length ? lastDates[lastDates.length - 1] : "—";
+  $("#subtitle").textContent += ` · 行情截至 ${lastDate}` + (D.commit ? ` · 提交 ${D.commit.slice(0, 7)}` : "");
+
+  // 分页：记住上次打开的页（只存在本机浏览器），也支持 #score 这样的链接
+  const TABS = ["current", "score", "events", "data"];
+  function showTab(t) {
+    if (!TABS.includes(t)) t = "current";
+    document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === t ? "true" : "false"));
+    TABS.forEach((x) => ($("#p-" + x).hidden = x !== t));
+    try { localStorage.setItem("ledger-tab", t); } catch (e) { /* 浏览器不允许存储时忽略 */ }
+  }
+  document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
+  let startTab = (location.hash || "").slice(1);
+  if (!TABS.includes(startTab)) { try { startTab = localStorage.getItem("ledger-tab") || "current"; } catch (e) { startTab = "current"; } }
+  showTab(startTab);
+
+  // 当前判断页顶部的四个状态
+  function renderStatus() {
+    const due = (D.coverage || []).filter((c) => !c.current_done).map((c) => H[c.horizon].label);
+    const t14 = new Date(Date.parse(D.today) + 14 * 864e5).toISOString().slice(0, 10);
+    const ev14 = (D.events || []).filter((e) => e.date >= D.today && e.date <= t14 && e.importance === "high");
+    const prePending = ev14.filter((e) => !e.n_pre).length;
+    const lastSub = (D.current || []).map((r) => r.forecast_date).sort().pop();
+    const stale = lastDate !== "—" && (Date.parse(D.today) - Date.parse(lastDate)) / 864e5 > 4;
+    const items = [
+      ["本期待填", due.length ? due.map((d) => `<span class="chip warn">${d}</span>`).join("") : `<span class="chip ok">都已填齐</span>`],
+      ["未来 14 天重大事件", `<b class="num">${ev14.length}</b> 个${prePending ? `<span class="chip warn">${prePending} 个待记事前</span>` : ""}`],
+      ["最近一次提交", `<span class="num">${lastSub || "—"}</span>`],
+      ["行情截至", `<span class="num">${lastDate}</span>${stale ? '<span class="chip warn">数据可能没更新</span>' : ""}`],
+    ];
+    $("#status").innerHTML = items.map(([k, v]) => `<div class="stat"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("");
+  }
+
+  function renderOrders() {
+    const rk = (D.rankings || []).filter((r) => r.latest_order);
+    $("#orders").innerHTML = rk.length ? rk.map((r) => `<div><b>${H[r.horizon].label}</b>
+      <div class="order">${r.latest_order.split(" > ").map((c) => `<span title="${esc(M[c]?.name)}">${esc(M[c]?.name || c)}</span>`).join("<i>›</i>")}</div>
+      <span class="small muted num">${r.latest_date}</span></div>`).join("") : `<p class="small muted" style="padding:8px 0">还没有排序</p>`;
+  }
+
+  function renderFresh() {
+    const sn = D.snapshots || {};
+    $("#fresh").innerHTML = `<thead><tr><th>市场</th><th>行情最后日期</th><th>最近指标存档</th><th class="r">未填项</th></tr></thead><tbody>` +
+      D.markets.map((m) => {
+        const s = sn[m.code];
+        return `<tr><td>${esc(m.name)} <span class="mk-code">${m.code}</span></td><td class="num">${m.last_price_date || "—"}</td>
+          <td class="num">${s ? s.forecast_date : '<span class="muted">无</span>'}</td><td class="r num">${s ? (s.missing || []).length : "—"}</td></tr>`;
+      }).join("") + `</tbody>`;
+  }
+  $("#demo").hidden = !D.demo;
+
+  // 当前判断矩阵
+  const cur = {};
+  D.current.forEach((r) => (cur[r.market + "|" + r.horizon] = r));
+  let selected = null;
+  function renderMatrix() {
+    let h = `<thead><tr><th>市场</th>${D.horizons.map((x) => `<th>${x.label} <span class="muted">· 每${{ week: "周", "2week": "两周", month: "月", quarter: "季" }[x.every]}更新</span></th>`).join("")}</tr></thead><tbody>`;
+    for (const m of D.markets) {
+      h += `<tr><th scope="row"><span class="mk-name">${esc(m.name)}</span><span class="mk-code">${m.code}</span><span class="mk-bench">${esc(m.benchmark)}</span></th>`;
+      for (const x of D.horizons) {
+        const r = cur[m.code + "|" + x.code];
+        if (!r) { h += `<td><div class="cell"><span class="muted small">尚无预测</span></div></td>`; continue; }
+        const p = probs(r);
+        const top = Object.keys(p).reduce((a, b) => (p[a] >= p[b] ? a : b));
+        const num = (k) => (k === top ? `<b>${p0(p[k])}</b>` : `<span>${p0(p[k])}</span>`);
+        h += `<td><button class="cell" type="button" data-key="${m.code}|${x.code}" aria-pressed="false"
+          aria-label="${esc(m.name)} ${x.label}：跌 ${p0(p.down)}%，中间 ${p0(p.flat)}%，涨 ${p0(p.up)}%">
+          <div class="cell-probs">${num("down")}${num("flat")}${num("up")}</div>
+          ${pbar(p)}${pbar(base(r), "base")}
+          <div class="cell-meta"><span>至 ${md(r.target_date)}${r.kind === "update" ? ' · <span class="ink2">已更新</span>' : ""}</span>${statusChip(r)}</div>
+        </button></td>`;
+      }
+      h += `</tr>`;
+    }
+    $("#matrix").innerHTML = h + `</tbody>`;
+    $("#matrix").querySelectorAll("button.cell").forEach((b) => b.addEventListener("click", () => select(b.dataset.key)));
+  }
+  function select(key) {
+    selected = key;
+    document.querySelectorAll("#matrix button.cell").forEach((b) => b.setAttribute("aria-pressed", b.dataset.key === key ? "true" : "false"));
+    const r = cur[key];
+    const m = M[r.market], x = H[r.horizon];
+    const p = probs(r), b = base(r);
+    const bl = r.bl_up == null ? null : { up: r.bl_up, flat: r.bl_flat, down: r.bl_down };
+    const row = (k) => `<tr><td><span class="key"><span class="sw ${k}"></span>${CAT[k]}</span></td><td class="num"><b>${p0(p[k])}%</b></td>
+      <td class="num muted">${p0(b[k])}%</td><td class="num muted">${bl ? p0(bl[k]) + "%" : "—"}</td></tr>`;
+    const block = (lbl, html) => `<div class="textblock"><span class="lbl">${lbl}</span>${html}</div>`;
+    const txt = (v) => (v ? `<span>${esc(v)}</span>` : '<span class="empty">未填</span>');
+    const thIdx = Object.fromEntries((D.threads || []).map((t) => [t.id, t]));
+    const linked = (r.threads || []).map((id) => thIdx[id]).filter(Boolean);
+    const thChips = linked.length ? `<div class="drivers">${linked.map((t) => `<span><b>${esc(t.status)}</b>${esc(t.question)}</span>`).join("")}</div>` : "";
+    // 相比上次：概率变化
+    let diff = "";
+    if (r.prev) {
+      const d = (k) => Math.round((r["p_" + k] - r.prev["p_" + k]) * 100);
+      diff = `<div class="small ink2">上次 ${r.prev.forecast_date}：涨 ${d("up") >= 0 ? "+" : ""}${d("up")} · 中间 ${d("flat") >= 0 ? "+" : ""}${d("flat")} · 跌 ${d("down") >= 0 ? "+" : ""}${d("down")} 个点</div>`;
+    }
+    const evs = (r.events_window || []).filter((e) => e.importance === "high");
+    const risks = (r.change_my_mind ? `<span>${esc(r.change_my_mind)}</span>` : "") +
+      (evs.length ? `<div class="small ink2">期限内重大事件：${evs.map((e) => `${md(e.date)} ${esc(e.name)}`).join("；")}</div>` : "");
+    const checks = linked.filter((t) => t.next_check).map((t) => `${t.next_check.date} ${esc(t.next_check.what || "")}`);
+    const nextEv = evs[0];
+    const next = checks.length ? checks.map((c) => `<div>${c}</div>`).join("") : nextEv ? `<span>${md(nextEv.date)} ${esc(nextEv.name)}（期限内下一个重大事件）</span>` : '<span class="empty">未设</span>';
+    const zoneText = r.status === "open" && r.running_ret_pct != null
+      ? `${sgn(r.running_ret_pct)}%，目前在${ZONE[r.running_zone]}（起点 ${r.start_date}）`
+      : r.status === "waiting_start" ? "还没有起点价格（预测日之后第一个收盘价）" : r.status === "resolved" ? `${sgn(r.ret_pct)}%，结果：${CAT[r.outcome]}` : "—";
+    const drv = Object.entries(r.drivers || {});
+    $("#detail").innerHTML = `
+      <div>
+        <div class="panel-head"><h3>${esc(m.name)} · ${esc(m.benchmark)} · ${x.label}</h3>
+          <p class="small muted num">${r.id}${r.kind === "update" ? " · 更新卡" : ""}</p></div>
+        ${pbar(p, "lg")}
+        <table class="cmp"><thead><tr><th>档位</th><th>你的判断</th><th>历史基础</th><th>简单基线</th></tr></thead>
+          <tbody>${row("up")}${row("flat")}${row("down")}</tbody></table>
+        <dl class="kv">
+          <dt>预测日 → 到期</dt><dd class="num">${r.forecast_date} → ${r.target_date}</dd>
+          <dt>中间区间</dt><dd class="num">${sgn(r.down_thr_pct)}% ~ ${sgn(r.up_thr_pct)}%</dd>
+          <dt>至今</dt><dd>${zoneText}</dd>
+        </dl>
+        <p class="small muted">简单基线只用价格：近 3 个月波动 + 10 年漂移，代表“不做研究”能给出的判断。</p>
+      </div>
+      <div>
+        ${block("为什么这样判断", txt(r.why) + thChips)}
+        ${block("相比上次改变了什么", (r.changed ? `<span>${esc(r.changed)}</span>` : r.prev ? '<span class="empty">未写</span>' : '<span class="empty">第一张卡</span>') + diff)}
+        ${block("尚未解决的风险", risks || '<span class="empty">未填改判条件</span>')}
+        ${block("下一验证点", next)}
+        <details class="mini-fold"><summary>卡片其他字段与指标存档</summary>
+          ${drv.length ? block("主要驱动", `<div class="drivers">${drv.map(([k, v]) => `<span><b>${esc(k)}</b>${esc(v)}</span>`).join("")}</div>`) : ""}
+          ${block("关键假设", txt(r.assumptions))}
+          ${block("市场当前定价了什么", txt(r.priced_in))}
+          ${block("预期回报区间", r.expected_range ? `<span class="num">${sgn(r.expected_range[0])}% ~ ${sgn(r.expected_range[1])}%</span>` : '<span class="empty">未填</span>')}
+          ${snapshotHTML(r.market)}
+        </details>
+      </div>`;
+  }
+
+  function renderThreads() {
+    const ths = (D.threads || []).filter((t) => t.status !== "关闭");
+    if (!ths.length) { $("#threads").innerHTML = `<p class="small muted" style="padding:8px 0">还没有研究主线。用 python scripts/research.py open 开第一条。</p>`; return; }
+    const stCls = { 主线: "ok", 验证中: "wait", 新出现: "warn", 减弱: "wait" };
+    $("#threads").innerHTML = ths.map((t) => `<div class="thread">
+      <div class="rowtop"><span><span class="chip ${stCls[t.status] || "wait"}">${esc(t.status)}</span> <b>${esc(t.question)}</b></span>
+        <span class="small muted">${(t.markets || []).join(" ")} · ${(t.horizons || []).map((h) => H[h]?.label || h).join("/")}</span></div>
+      <div class="tgrid small">
+        <div><span class="muted">市场预期（${esc(t.market_view?.basis || "")}）</span><br>${esc(t.market_view?.text || "")}</div>
+        <div><span class="muted">我们的判断 · 分歧在</span><br>${esc(t.our_view)} · <b>${esc(t.divergence)}</b></div>
+        <div><span class="muted">证据</span><br>支持 <b class="num">${t.n_support}</b> · 反对 <b class="num">${t.n_oppose}</b> · 共 ${t.n_evidence}</div>
+        <div><span class="muted">下一验证点</span><br>${t.next_check ? `<span class="num">${t.next_check.date}</span> ${esc(t.next_check.what || "")}` : "未设"}</div>
+      </div>
+      ${(t.recent_evidence || []).length ? `<details class="mini-fold"><summary>最近证据</summary>${t.recent_evidence.map((e) => `<div class="small" style="padding:4px 0;border-bottom:1px solid var(--rule)">
+        <span class="chip ${e.stance === "支持" ? "ok" : e.stance === "反对" ? "warn" : "wait"}">${esc(e.stance)}</span>
+        <span class="muted">${esc(e.kind)}${e.vintage ? "·" + esc(e.vintage) : ""}${e.nature ? "·" + esc(e.nature) : ""} · 改变：${esc(e.changes)} · ${md(e.info_date)}</span><br>
+        ${e.url ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.summary)}</a>` : esc(e.summary)} <span class="muted">（${esc(e.source)}）</span></div>`).join("")}</details>` : ""}
+    </div>`).join("");
+  }
+
+  // 即将到期
+  let upAll = false;
+  function renderUpcoming() {
+    const LIMIT = 12;
+    const rows = upAll ? D.upcoming : D.upcoming.slice(0, LIMIT);
+    const more = $("#upcoming-more");
+    more.hidden = D.upcoming.length <= LIMIT;
+    more.textContent = upAll ? "收起" : `显示全部 ${D.upcoming.length} 条`;
+    more.onclick = () => { upAll = !upAll; renderUpcoming(); };
+    $("#upcoming-count").textContent = D.upcoming.length ? `共 ${D.upcoming.length} 条，按到期日排序` : "";
+    if (!rows.length) { $("#upcoming").innerHTML = `<tbody><tr><td class="muted">45 天内没有到期的预测</td></tr></tbody>`; return; }
+    $("#upcoming").innerHTML = `<thead><tr><th>到期日</th><th class="r">剩余</th><th>市场</th><th>期限</th><th>预测（跌/中间/涨）</th><th class="r">中间区间</th><th>至今</th></tr></thead><tbody>` +
+      rows.map((r) => `<tr><td class="num">${r.target_date}</td><td class="r num">${r.days_left} 天</td>
+        <td>${esc(M[r.market].name)} <span class="mk-code">${r.market}</span></td><td>${H[r.horizon].label}</td>
+        <td><span style="display:inline-flex;align-items:center;gap:8px">${pbar(probs(r), "sm")}<span class="num small ink2">${p0(r.p_down)}/${p0(r.p_flat)}/${p0(r.p_up)}</span></span></td>
+        <td class="r num">${sgn(r.down_thr_pct)}/${sgn(r.up_thr_pct)}%</td><td>${statusChip(r)}</td></tr>`).join("") + `</tbody>`;
+  }
+
+  // 技能分森林图
+  function renderForest() {
+    const items = D.by_horizon;
+    const vals = items.flatMap((b) => [b.skill, b.ci_lo, b.ci_hi]).filter((v) => v != null);
+    const ext = Math.max(0.1, Math.ceil(Math.max(...vals.map(Math.abs), 0) * 20) / 20);
+    const pad = 2; // 两端留白（%）
+    const pos = (v) => pad + ((v + ext) / (2 * ext)) * (100 - 2 * pad);
+    let h = `<div class="frow head"><div>期限</div><div class="nb">不重叠窗口</div><div>技能分与 90% 区间</div><div class="val">技能分</div></div>`;
+    for (const b of items) {
+      const x = H[b.horizon];
+      let bar = `<div class="fbar" aria-hidden="true"><i class="z" style="left:${pos(0)}%"></i>`;
+      if (b.n) {
+        if (b.ci_lo != null) bar += `<i class="c" style="left:${pos(b.ci_lo)}%;width:${pos(b.ci_hi) - pos(b.ci_lo)}%"></i>`;
+        bar += `<i class="d ${b.ci_lo == null ? "hollow" : ""}" style="left:${pos(b.skill)}%"></i>`;
+      }
+      bar += `</div>`;
+      const val = b.n
+        ? `${sgn(b.skill, 3)}<span class="ci">${b.ci_lo != null ? `[${sgn(b.ci_lo, 2)}, ${sgn(b.ci_hi, 2)}]` : "窗口太少，不给区间"}</span>`
+        : `<span class="muted">尚无到期</span>`;
+      h += `<div class="frow"><div class="lbl"><b>${x.label}</b><span class="num">n=${b.n}</span></div><div class="nb num ink2">${b.n_blocks ?? 0}</div>
+        <div class="fplot" data-h="${b.horizon}">${bar}</div><div class="val">${val}</div></div>`;
+    }
+    // 坐标轴用 HTML 文字（图本身横向拉伸，SVG 文字会变形）；刻度在两端各留 pad，和点位对齐
+    const ticks = [-ext, -ext / 2, 0, ext / 2, ext];
+    h += `<div class="frow axis"><div></div><div class="nb"></div>
+      <div style="position:relative;height:18px">${ticks
+        .map((t) => `<span class="num" style="position:absolute;left:${pos(t)}%;transform:translateX(-50%);font-size:10.5px;color:var(--muted)">${sgn(t, 2)}</span>`).join("")}</div>
+      <div></div></div>`;
+    $("#forest").innerHTML = h;
+    $("#forest").querySelectorAll(".fplot").forEach((el) => {
+      const b = items.find((i) => i.horizon === el.dataset.h);
+      el.addEventListener("mousemove", (ev) => b.n && showTip(`<b>${H[b.horizon].label}</b><br>已到期 ${b.n} 条 · 不重叠窗口 ${b.n_blocks}<br>平均 RPS ${b.mean_rps.toFixed(3)}，基准 ${b.mean_rps_clim.toFixed(3)}<br>最大概率档命中率 ${(b.hit_rate * 100).toFixed(0)}%`, ev));
+      el.addEventListener("mouseleave", hideTip);
+    });
+  }
+
+  // 校准图
+  let calKey = "all", calCat = "pooled";
+  function renderCalCat() {
+    const cats = [["pooled", "三档合计"], ["up", "涨"], ["flat", "中间"], ["down", "跌"]];
+    $("#cal-cat").innerHTML = cats.map(([k, l]) => `<button type="button" data-k="${k}" aria-pressed="${k === calCat}">${l}</button>`).join("");
+    $("#cal-cat").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { calCat = b.dataset.k; renderCalCat(); renderCal(); }));
+  }
+  function renderCalSeg() {
+    const keys = ["all", ...D.horizons.map((h) => h.code).filter((k) => D.calibration[k])];
+    $("#cal-seg").innerHTML = keys.map((k) => `<button type="button" data-k="${k}" aria-pressed="${k === calKey}">${k === "all" ? "全部" : H[k].label}</button>`).join("");
+    $("#cal-seg").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { calKey = b.dataset.k; renderCalSeg(); renderCal(); }));
+  }
+  function renderCal() {
+    const pts = calCat === "pooled" ? (D.calibration[calKey] || []) : (((D.calibration_cat || {})[calKey] || {})[calCat] || []);
+    if (!pts.length) { $("#cal").innerHTML = `<p class="muted small">还没有到期的预测</p>`; return; }
+    const maxv = Math.max(0.7, Math.ceil(Math.max(...pts.map((p) => Math.max(p.mean_p, p.obs))) * 10) / 10);
+    const W = 360, Hh = 300, L = 40, R = 12, T = 10, B = 34;
+    const sx = (v) => L + (v / maxv) * (W - L - R), sy = (v) => T + (1 - v / maxv) * (Hh - T - B);
+    const nmax = Math.max(...pts.map((p) => p.n));
+    let s = `<svg viewBox="0 0 ${W} ${Hh}" role="img" aria-label="校准图">`;
+    for (let t = 0; t <= maxv + 1e-9; t += 0.1) {
+      const tt = Math.round(t * 10) / 10;
+      s += `<line class="grid" x1="${L}" x2="${W - R}" y1="${sy(tt)}" y2="${sy(tt)}"/>`;
+      if (Math.round(tt * 10) % 2 === 0) {
+        s += `<text x="${L - 6}" y="${sy(tt) + 3.5}" text-anchor="end">${tt * 100}%</text>`;
+        s += `<text x="${sx(tt)}" y="${Hh - B + 15}" text-anchor="middle">${tt * 100}%</text>`;
+      }
+    }
+    s += `<line class="diag" x1="${sx(0)}" y1="${sy(0)}" x2="${sx(maxv)}" y2="${sy(maxv)}"/>`;
+    s += `<text x="${(L + W - R) / 2}" y="${Hh - 2}" text-anchor="middle">你给的概率</text>`;
+    s += `<text x="12" y="${(T + Hh - B) / 2}" text-anchor="middle" transform="rotate(-90 12 ${(T + Hh - B) / 2})">实际发生比例</text>`;
+    s += `<polyline class="line" points="${pts.map((p) => `${sx(p.mean_p)},${sy(p.obs)}`).join(" ")}"/>`;
+    pts.forEach((p, i) => {
+      const r = 4 + 6 * Math.sqrt(p.n / nmax);
+      s += `<circle class="pt" cx="${sx(p.mean_p)}" cy="${sy(p.obs)}" r="${r}"/><circle class="hit" data-i="${i}" cx="${sx(p.mean_p)}" cy="${sy(p.obs)}" r="${Math.max(r + 6, 12)}"/>`;
+    });
+    s += `</svg>`;
+    $("#cal").innerHTML = s;
+    $("#cal").querySelectorAll(".hit").forEach((c) => {
+      const p = pts[+c.dataset.i];
+      c.addEventListener("mousemove", (ev) => showTip(`给 ${Math.round(p.lo * 100)}–${Math.round(p.hi * 100)}% 的情况：平均给 ${(p.mean_p * 100).toFixed(0)}%，实际发生 ${(p.obs * 100).toFixed(0)}%<br>共 ${p.n} 次`, ev));
+      c.addEventListener("mouseleave", hideTip);
+    });
+  }
+
+  // 累计技能分小图
+  function renderMultiples() {
+    const all = Object.values(D.trajectory).flat().filter((p) => p[2] >= 10).map((p) => Math.abs(p[1]));
+    const ext = Math.max(0.1, Math.ceil(Math.max(0, ...all) * 20) / 20);
+    const dates = Object.values(D.trajectory).flat().filter((p) => p[2] >= 10).map((p) => +new Date(p[0]));
+    const t0 = Math.min(...dates), t1 = Math.max(...dates);
+    const W = 220, Hh = 120, L = 34, R = 8, T = 8, B = 20;
+    const sx = (t) => L + (t1 > t0 ? (t - t0) / (t1 - t0) : 0.5) * (W - L - R), sy = (v) => T + (1 - (v + ext) / (2 * ext)) * (Hh - T - B);
+    const y0 = new Date(t0).getFullYear(), y1 = new Date(t1).getFullYear();
+    let html = "";
+    for (const x of D.horizons) {
+      const pts = (D.trajectory[x.code] || []).filter((p) => p[2] >= 10);
+      const last = pts[pts.length - 1];
+      let s = `<svg viewBox="0 0 ${W} ${Hh}" role="img" aria-label="${x.label} 累计技能分">`;
+      [-ext, 0, ext].forEach((v) => {
+        s += `<line class="${v === 0 ? "zero" : "grid"}" x1="${L}" x2="${W - R}" y1="${sy(v)}" y2="${sy(v)}"/><text x="${L - 5}" y="${sy(v) + 3.5}" text-anchor="end">${sgn(v, 2)}</text>`;
+      });
+      for (let y = y0 + 1; y <= y1; y++) {
+        const t = +new Date(`${y}-01-01`);
+        if (t > t0 && t < t1) s += `<text x="${sx(t)}" y="${Hh - 5}" text-anchor="middle">${y}</text>`;
+      }
+      if (pts.length) {
+        const clamp = (v) => Math.max(-ext, Math.min(ext, v));
+        const d = pts.map((p) => `${sx(+new Date(p[0])).toFixed(1)},${sy(clamp(p[1])).toFixed(1)}`).join(" ");
+        s += `<polyline class="line" points="${d}"/>`;
+        s += `<circle class="pt" cx="${sx(+new Date(last[0]))}" cy="${sy(clamp(last[1]))}" r="4"/>`;
+        s += `<line class="cross" x1="0" x2="0" y1="${T}" y2="${Hh - B}" visibility="hidden"/><rect class="hit" x="${L}" y="${T}" width="${W - L - R}" height="${Hh - T - B}"/>`;
+      } else {
+        s += `<text x="${(L + W - R) / 2}" y="${(T + Hh - B) / 2}" text-anchor="middle">到期不足 10 条</text>`;
+      }
+      s += `</svg>`;
+      html += `<div class="mini" data-h="${x.code}"><div class="t"><b>${x.label}</b><span class="num ink2">${last ? sgn(last[1], 3) : "—"}</span></div>${s}</div>`;
+    }
+    $("#multiples").innerHTML = html;
+    document.querySelectorAll("#multiples .mini").forEach((el) => {
+      const pts = (D.trajectory[el.dataset.h] || []).filter((p) => p[2] >= 10);
+      const svg = el.querySelector("svg"), hit = el.querySelector(".hit"), cross = el.querySelector(".cross");
+      if (!hit) return;
+      hit.addEventListener("mousemove", (ev) => {
+        const box = svg.getBoundingClientRect();
+        const vx = ((ev.clientX - box.left) / box.width) * W;
+        let best = pts[0], bd = Infinity;
+        for (const p of pts) { const dd = Math.abs(sx(+new Date(p[0])) - vx); if (dd < bd) { bd = dd; best = p; } }
+        const cx = sx(+new Date(best[0]));
+        cross.setAttribute("x1", cx); cross.setAttribute("x2", cx); cross.setAttribute("visibility", "visible");
+        showTip(`${H[el.dataset.h].label} · 截至 ${best[0]}<br>累计技能分 ${sgn(best[1], 3)}（${best[2]} 条）`, ev);
+      });
+      hit.addEventListener("mouseleave", () => { cross.setAttribute("visibility", "hidden"); hideTip(); });
+    });
+  }
+
+  function renderDecomp() {
+    const rows = D.fx_decomp || [];
+    if (!rows.length) { $("#decomp").innerHTML = `<tbody><tr><td class="muted">还没有带本币价格的到期记录</td></tr></tbody>`; return; }
+    const pct = (x) => (x == null ? "—" : (x * 100).toFixed(1) + "%");
+    $("#decomp").innerHTML = `<thead><tr><th>市场</th><th class="r">样本</th><th class="r">美元回报波动</th><th class="r">本币部分</th><th class="r">汇率部分</th><th class="r">汇率方差占比</th><th class="r">本币×汇率相关</th></tr></thead><tbody>` +
+      rows.map((r) => r.vol_usd == null
+        ? `<tr><td>${esc(M[r.market].name)} <span class="mk-code">${r.market}</span></td><td class="r num">${r.n}</td><td class="r muted" colspan="5">样本不足 8 条</td></tr>`
+        : `<tr><td>${esc(M[r.market].name)} <span class="mk-code">${r.market}</span></td><td class="r num">${r.n}</td>
+          <td class="r num">${pct(r.vol_usd)}</td><td class="r num">${pct(r.vol_local)}</td><td class="r num">${pct(r.vol_fx)}</td>
+          <td class="r num">${pct(r.fx_var_share)}</td><td class="r num">${r.corr_local_fx == null ? "—" : sgn(r.corr_local_fx, 2)}</td></tr>`).join("") + `</tbody>`;
+  }
+
+  function snapshotHTML(m) {
+    const sn = (D.snapshots || {})[m];
+    if (!sn) return `<div class="textblock"><span class="lbl">提交时的指标</span><span class="empty">这个市场还没有指标存档</span></div>`;
+    const ratio = sn.iv_rv_ratio == null ? "未填隐含波动"
+      : `${sn.implied_vol_source || "隐含波动"} ${sn.implied_vol}% ÷ 已实现 ${((sn.realized_vol_local || sn.realized_vol_usd) * 100).toFixed(1)}% = <b class="num">${sn.iv_rv_ratio.toFixed(2)}</b> <span class="muted small">（观察项。隐含波动通常高于实际波动，多出的部分含风险补偿；期限和标的也不完全匹配，不直接用来调档）</span>`;
+    const vals = Object.entries(sn.values || {});
+    return `<div class="textblock"><span class="lbl">提交时的指标 · ${sn.forecast_date}</span><span>${ratio}</span></div>
+      ${sn.regime && Object.keys(sn.regime).length ? `<div class="textblock"><span class="lbl">状态（增长 / 通胀 / 政策与融资）</span><span>${esc(sn.regime.growth || "—")} / ${esc(sn.regime.inflation || "—")} / ${esc(sn.regime.policy || "—")}</span></div>` : ""}
+      ${sn.reference_class ? `<div class="textblock"><span class="lbl">参考类</span><span>${esc(sn.reference_class)}</span></div>` : ""}
+      ${vals.length ? `<table class="cmp"><thead><tr><th>指标</th><th>数值</th><th>数据日期</th></tr></thead><tbody>${vals.map(([k, v]) =>
+        `<tr><td style="text-align:left">${v.url && v.url.startsWith("http") ? `<a href="${esc(v.url)}" target="_blank" rel="noopener">${esc(v.name)}</a>` : esc(v.name)}${v.note ? `<span class="muted small"> · ${esc(v.note)}</span>` : ""}</td><td class="num">${esc(v.value)}</td><td class="num muted">${md(v.date)}</td></tr>`).join("")}</tbody></table>` : ""}
+      ${(sn.missing || []).length ? `<p class="small muted">未填：${sn.missing.map(esc).join("、")}</p>` : ""}`;
+  }
+
+  function renderEvents() {
+    const evs = D.events || [];
+    const today = D.today;
+    $("#events").innerHTML = evs.length ? `<thead><tr><th>日期</th><th>事件</th><th>市场</th><th>记录</th></tr></thead><tbody>` + evs.map((e) => {
+      const past = e.date < today;
+      const st = past ? (e.has_post ? `<span class="chip ok">已记结果</span>` : `<span class="chip wait">待记结果</span>`)
+        : (e.n_pre ? `<span class="chip ok">已记事前 ${e.n_pre}</span>` : (e.importance === "high" ? `<span class="chip warn">待记事前</span>` : ""));
+      const mk = Array.isArray(e.markets) ? (e.markets.length === D.markets.length ? "全部" : e.markets.join(" ")) : e.markets;
+      return `<tr${past ? ' class="muted"' : ""}><td class="num">${md(e.date)} ${esc(e.time || "")}</td>
+        <td style="white-space:normal">${e.importance === "high" ? "★ " : ""}${esc(e.name)}${e.tentative ? ' <span class="muted small">推算</span>' : ""}</td>
+        <td class="num small">${esc(mk)}</td><td>${st}</td></tr>`;
+    }).join("") + `</tbody>` : `<tbody><tr><td class="muted">events.yaml 里没有近期事件</td></tr></tbody>`;
+
+    const sp = D.event_split || [];
+    const pc = (x) => (x == null ? "—" : Math.round(x * 100) + "%");
+    $("#evsplit").innerHTML = sp.length ? `<thead><tr><th>期限</th><th>分组</th><th class="r">条数</th><th class="r">技能分</th><th class="r">给的中间档</th><th class="r">实际落在中间</th></tr></thead><tbody>` +
+      sp.map((r) => {
+        const g1 = r.horizon === "14d" ? "有重大事件" : `多于 ${r.threshold} 个`, g0 = r.horizon === "14d" ? "无" : `不多于 ${r.threshold} 个`;
+        return `<tr><td rowspan="2">${H[r.horizon].label}</td><td>${g1}</td><td class="r num">${r.n_with}</td><td class="r num">${r.n_with ? sgn(r.skill_with, 3) : "—"}</td><td class="r num">${pc(r.p_flat_with)}</td><td class="r num">${pc(r.flat_rate_with)}</td></tr>
+          <tr><td>${g0}</td><td class="r num">${r.n_without}</td><td class="r num">${r.n_without ? sgn(r.skill_without, 3) : "—"}</td><td class="r num">${pc(r.p_flat_without)}</td><td class="r num">${pc(r.flat_rate_without)}</td></tr>`;
+      }).join("") + `</tbody>` : `<tbody><tr><td class="muted">还没有冻结了事件列表的已到期预测</td></tr></tbody>`;
+
+    const ns = D.event_notes || [];
+    const label = { event_pre: "事前", event_post: "结果", shock: "突发" };
+    const evName = Object.fromEntries(evs.map((e) => [e.id, e.name]));
+    $("#evnotes").innerHTML = ns.length ? ns.slice(0, 6).map((n) => `<div>
+      <div class="rowtop"><span><span class="chip ${n.type === "shock" ? "warn" : n.type === "event_post" ? "ok" : "wait"}">${label[n.type] || n.type}</span>
+        ${esc(n.title || evName[n.event_id] || n.event_id)}${n.type === "shock" && n.changed_view ? ' <span class="small muted">· 改了判断</span>' : ""}</span>
+        <span class="small muted num">${esc(n.note_date)}</span></div>
+      <div class="small ink2">${esc([n.priced, n.view, n.actual, n.surprise != null ? "意外 " + n.surprise : "", n.note].filter(Boolean).join(" · "))}</div>
+    </div>`).join("") : `<p class="small muted">还没有事件记录</p>`;
+  }
+
+  function renderThreeway() {
+    const rows = D.by_horizon.filter((b) => b.n);
+    if (!rows.length) { $("#threeway").innerHTML = `<tbody><tr><td class="muted">还没有到期的预测</td></tr></tbody>`; return; }
+    const f3 = (x) => (x == null ? "—" : x.toFixed(3));
+    $("#threeway").innerHTML = `<thead><tr><th>期限</th><th class="r">条数</th><th class="r">基础频率</th><th class="r">简单基线</th><th class="r">你</th>
+      <th class="r">基线相对基础频率</th><th class="r">你相对基础频率</th><th class="r">你相对简单基线</th></tr></thead><tbody>` +
+      rows.map((b) => `<tr><td>${H[b.horizon].label}</td><td class="r num">${b.n}</td>
+        <td class="r num muted">${f3(b.mean_rps_clim)}</td><td class="r num muted">${f3(b.mean_rps_bl)}</td><td class="r num">${f3(b.mean_rps)}</td>
+        <td class="r num">${b.skill_bl_vs_clim == null ? "—" : sgn(b.skill_bl_vs_clim, 3)}</td>
+        <td class="r num">${sgn(b.skill, 3)}</td>
+        <td class="r num"><b>${b.skill_vs_bl == null ? "—" : sgn(b.skill_vs_bl, 3)}</b>${b.ci_bl_lo != null ? `<br><span class="muted small">[${sgn(b.ci_bl_lo, 2)}, ${sgn(b.ci_bl_hi, 2)}]</span>` : ""}</td></tr>`).join("") + `</tbody>`;
+  }
+
+  function renderUpdates() {
+    const u = D.updates || { by_horizon: [], n_open: 0 };
+    $("#updates").innerHTML = u.by_horizon.length
+      ? `<thead><tr><th>期限</th><th class="r">已到期的更新</th><th class="r">平均 RPS 差</th><th class="r">更新更准的比例</th></tr></thead><tbody>` +
+        u.by_horizon.map((r) => `<tr><td>${H[r.horizon].label}</td><td class="r num">${r.n}</td><td class="r num">${sgn(r.mean_diff, 3)}</td><td class="r num">${Math.round(r.share_better * 100)}%</td></tr>`).join("") + `</tbody>`
+      : `<tbody><tr><td class="muted">还没有到期的更新卡${u.n_open ? `（进行中 ${u.n_open} 张）` : ""}</td></tr></tbody>`;
+  }
+
+  function renderCorrections() {
+    const cs = D.corrections || [];
+    $("#corrections").innerHTML = cs.length
+      ? `<thead><tr><th>日期</th><th>对象</th><th class="r">原值 → 新值</th><th>原因</th></tr></thead><tbody>` +
+        cs.map((c) => `<tr><td class="num">${c.note_date}</td><td class="num small">${esc(c.ref)} · ${c.leg} · ${c.market}</td>
+          <td class="r num">${c.old} → ${c.new}</td><td style="white-space:normal">${esc(c.reason)}</td></tr>`).join("") + `</tbody>`
+      : `<tbody><tr><td class="muted">没有更正</td></tr></tbody>`;
+  }
+
+  function renderRankings() {
+    $("#rankings").innerHTML = D.rankings.map((r) => `<div>
+      <div class="rowtop"><b>${H[r.horizon].label}</b><span class="num">${r.mean_spearman != null ? sgn(r.mean_spearman, 2) : "—"}</span></div>
+      <div class="small muted">已到期 ${r.n} 次 · 不重叠窗口 ${r.n_blocks ?? 0} · 进行中 ${r.n_open}</div>
+    </div>`).join("");
+  }
+
+  function renderCoverage() {
+    if (!D.coverage.length) { $("#coverage").innerHTML = `<p class="muted small">还没有预测</p>`; return; }
+    $("#coverage").innerHTML = D.coverage.map((c) => {
+      const share = c.total ? c.filled / c.total : 0;
+      return `<div>
+        <div class="rowtop"><b>${H[c.horizon].label}</b><span class="num">${c.filled}/${c.total} 期</span></div>
+        <div class="meter" role="img" aria-label="${c.filled}/${c.total}"><i style="width:${(share * 100).toFixed(1)}%"></i></div>
+        <div class="small" style="display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center">
+          ${c.current_done ? `<span class="chip ok">本期已填齐</span>` : `<span class="chip warn">本期待填 · ${esc(c.current_period)}</span>`}
+          ${c.n_missed ? `<span class="muted">漏填 ${c.n_missed} 期：<span class="num">${c.missed.map(esc).join("、")}</span></span>` : `<span class="muted">没有漏填</span>`}
+        </div>
+      </div>`;
+    }).join("");
+  }
+
+  function renderMH() {
+    const idx = {};
+    D.by_market_horizon.forEach((r) => (idx[r.market + "|" + r.horizon] = r));
+    let h = `<thead><tr><th>市场</th>${D.horizons.map((x) => `<th class="r">${x.label.replace(" ", "")}</th>`).join("")}</tr></thead><tbody>`;
+    for (const m of D.markets) {
+      h += `<tr><td>${m.code}</td>` + D.horizons.map((x) => {
+        const r = idx[m.code + "|" + x.code];
+        if (!r) return `<td class="r muted">—</td>`;
+        const weak = r.n < 30;
+        return `<td class="r num ${weak ? "muted" : ""}" title="${r.n} 条">${sgn(r.skill, 2)}</td>`;
+      }).join("") + `</tr>`;
+    }
+    $("#mh").innerHTML = h + `</tbody>`;
+  }
+
+  function renderRecent() {
+    const rows = (D.recent_resolved || []).slice(0, 8);
+    if (!rows.length) { $("#recent").innerHTML = `<tbody><tr><td class="muted">还没有到期的预测</td></tr></tbody>`; return; }
+    $("#recent").innerHTML = `<thead><tr><th>到期</th><th>市场</th><th>预测</th><th class="r">回报</th><th>结果</th><th class="r">RPS</th></tr></thead><tbody>` +
+      rows.map((r) => {
+        const better = r.rps < r.rps_clim;
+        return `<tr><td class="num">${md(r.end_date)}</td><td>${r.market} <span class="muted small">${H[r.horizon].label}</span></td>
+        <td>${pbar(probs(r), "sm")}</td>
+        <td class="r num">${sgn(r.ret_pct)}%</td><td><span class="chip ${r.outcome}"><span class="dot ${r.outcome}"></span>${CAT[r.outcome]}</span></td>
+        <td class="r num"><span class="${better ? "better" : "worse"}">${r.rps.toFixed(2)}</span> <span class="muted small">/ ${r.rps_clim.toFixed(2)}</span></td></tr>`;
+      }).join("") + `</tbody>`;
+  }
+
+  function renderBackground() {
+    if (!D.background.length) { $("#bg").innerHTML = `<p class="muted small">还没有背景判断。提交卡片时加上 --background 即可。</p>`; return; }
+    $("#bg").innerHTML = D.background.map((b) => `<div class="sheet bg-card">
+      <div class="rowtop"><b>${esc(M[b.market]?.name || b.market)} <span class="mk-code">${b.market}</span></b><span class="small muted num">${b.forecast_date}</span></div>
+      <div class="ret">${b.expected_ann_return ? `${b.expected_ann_return[0]}% ~ ${b.expected_ann_return[1]}%` : "—"}<span class="small muted" style="font-family:var(--f-body)"> 年化</span></div>
+      <p>${esc(b.view)}</p>
+      ${b.change_my_mind ? `<p class="small ink2"><span class="muted">改判条件：</span>${esc(b.change_my_mind)}</p>` : ""}
+    </div>`).join("");
+  }
+
+  renderStatus();
+  renderThreads();
+  renderOrders();
+  renderFresh();
+  renderMatrix();
+  if (D.current.length) {
+    const first = D.current.find((r) => r.market === D.markets[0].code && r.horizon === D.horizons[0].code) || D.current[0];
+    select(first.market + "|" + first.horizon);
+  } else {
+    $("#detail").innerHTML = `<div><p class="muted">还没有预测。用 scripts/new_card.py 生成第一张卡片。</p></div>`;
+  }
+  renderUpcoming();
+  renderForest();
+  renderCalSeg();
+  renderCalCat();
+  renderCal();
+  renderDecomp();
+  renderEvents();
+  renderThreeway();
+  renderUpdates();
+  renderCorrections();
+  renderMultiples();
+  renderRankings();
+  renderCoverage();
+  renderMH();
+  renderRecent();
+  renderBackground();
+})();
+</script>
+
+</body>
+</html>
